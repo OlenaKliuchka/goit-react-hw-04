@@ -1,60 +1,98 @@
 import { useEffect, useState } from "react";
-import Description from "./components/Description/Description";
-import Feedback from "./components/Feedback/Feedback";
-import Options from "./components/Options/Options";
-import Notification from "./components/Notification/Notification";
+import toast, { Toaster } from "react-hot-toast";
+import { FidgetSpinner } from "react-loader-spinner";
+import ReactModal from "react-modal";
+
+import { fetchPhotos } from "./api/unsplash-api";
+
+import SearchBar from "./components/SearchBar/SearchBar";
+import ImageGallery from "./components/ImageGallery/ImageGallery";
+import ErrorMessage from "./components/ErrorMessage/ErrorMessage";
+import LoadMoreBtn from "./components/LoadMoreBtn/LoadMoreBtn";
+import ImageModal from "./components/ImageModal/ImageModal";
+
+ReactModal.setAppElement("#root");
 
 export default function App() {
-  const [reviews, setReviews] = useState(() => {
-    const saveReviews = localStorage.getItem("reviews");
-    const reviews = JSON.parse(saveReviews);
-    if (reviews) return reviews;
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
-    return {
-      good: 0,
-      neutral: 0,
-      bad: 0,
-    };
-  });
+  const [showModal, setShowModal] = useState({ isOpen: false, photo: null });
+
+  const [query, setQuery] = useState(null);
+  const [page, setPage] = useState(1);
+
+  function updateQuery(string) {
+    setPage(1);
+    setQuery(string);
+  }
 
   useEffect(() => {
-    localStorage.setItem("reviews", JSON.stringify(reviews));
-  }, [reviews]);
+    makeRequest(query, page);
+  }, [query, page]);
 
-  function updateFeedback(feedbackType) {
-    if (feedbackType === "reset") {
-      setReviews({
-        ...reviews,
-        good: 0,
-        neutral: 0,
-        bad: 0,
-      });
-    } else {
-      setReviews({
-        ...reviews,
-        [feedbackType]: reviews[feedbackType] + 1,
-      });
+  function makeRequest(query, page) {
+    if (query) {
+      setLoading(true);
+      setError(false);
+
+      fetchPhotos(query, page)
+        .then((data) => {
+          if (data.length === 0) {
+            return toast.error("No results for your query!", {
+              duration: 3500,
+              position: "top-right",
+            });
+          }
+
+          if (page > 1) {
+            setPhotos((prevPhotos) => [...prevPhotos, ...data]);
+          } else {
+            setPhotos(data);
+          }
+        })
+        .catch((e) => {
+          setError(true);
+
+          toast.error(e.message, {
+            duration: 3000,
+            position: "top-right",
+          });
+        })
+        .finally(() => setLoading(false));
     }
   }
 
-  const totalFeedback = reviews.good + reviews.neutral + reviews.bad;
-  const totalPositive =
-    totalFeedback > 0 ? Math.round((reviews.good / totalFeedback) * 100) : 0;
+  function openImage(photo) {
+    setShowModal({ isOpen: true, photo });
+  }
+
+  function closeImage() {
+    setShowModal({ isOpen: false, photo: null });
+  }
 
   return (
     <>
-      <Description />
-      <Options updateFeedback={updateFeedback} totalFeedback={totalFeedback} />
-
-      {totalFeedback > 0 ? (
-        <Feedback
-          reviews={reviews}
-          totalFeedback={totalFeedback}
-          totalPositive={totalPositive}
-        />
-      ) : (
-        <Notification />
+      <SearchBar onSubmit={updateQuery} />
+      {error && <ErrorMessage />}
+      {photos.length > 0 && !error && (
+        <ImageGallery photos={photos} onOpen={openImage} />
       )}
+      <FidgetSpinner
+        visible={loading}
+        height="100"
+        width="100"
+        ariaLabel="fidget-spinner-loading"
+        wrapperStyle={{}}
+        wrapperClass="fidget-spinner-wrapper"
+      />
+
+      {photos.length > 0 && !error && (
+        <LoadMoreBtn onLoading={loading} setPage={setPage} />
+      )}
+      <Toaster />
+      <ImageModal showModal={showModal} closeModal={closeImage} />
     </>
   );
 }
